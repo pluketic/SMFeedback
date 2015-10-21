@@ -1,4 +1,4 @@
-# set options to cahce twitter oauth so that it doesn´t prompt every time
+# set options to cache twitter oauth so that it doesn´t prompt every time
 options(httr_oauth_cache = TRUE)
 # setwd("~/Desktop/IA/Twitter/SMFeedback")
 
@@ -11,7 +11,7 @@ getScore <- function(twittername = NULL, igname = NULL) {
     library(dplyr)
     library(magrittr)
     library(stringr)
-    library(rjson)
+    library(RJSONIO)
     library(RCurl)
     load("hashgrep.R")
     
@@ -95,7 +95,7 @@ getScore <- function(twittername = NULL, igname = NULL) {
             content <- fromJSON(getURL(paste('https://api.instagram.com/v1/users/search?q=', 
                                              igname,'&access_token=', token, sep="")), 
                                 unexpected.escape = "keep")
-            userid <- as.numeric(content$data[[1]]$id)
+            userid <- as.numeric(content$data[[1]][[3]])
             
             # get user media 
             content <- fromJSON(getURL(paste("https://api.instagram.com/v1/users/", 
@@ -112,7 +112,7 @@ getScore <- function(twittername = NULL, igname = NULL) {
             
             # iterate over the next 80 media to have 100  
             l <- length(content$data)
-            next_url <- content$pagination$next_url
+            next_url <- content$pagination[[1]]
             while (l<n & length(content$data)>0 && (length(content$pagination)!=0) &&
                        !is.null(content$pagination['next_url'])){
                 
@@ -257,7 +257,7 @@ getScore <- function(twittername = NULL, igname = NULL) {
             content <- fromJSON(getURL(paste('https://api.instagram.com/v1/users/search?q=', 
                                              igname,'&access_token=', token, sep="")), 
                                 unexpected.escape = "keep")
-            userid <- as.numeric(content$data[[1]]$id)
+            userid <- as.numeric(content$data[[1]][[3]])
             
             # get user media 
             content <- fromJSON(getURL(paste("https://api.instagram.com/v1/users/", 
@@ -274,7 +274,7 @@ getScore <- function(twittername = NULL, igname = NULL) {
             
             # iterate over the next 80 media to have 100  
             l <- length(content$data)
-            next_url <- content$pagination$next_url
+            next_url <- content$pagination[[1]]
             while (l<n & length(content$data)>0 && (length(content$pagination)!=0) &&
                        !is.null(content$pagination['next_url'])){
                 
@@ -352,13 +352,13 @@ getScore <- function(twittername = NULL, igname = NULL) {
 }
 
 # try it out
-score <- getScore(twittername = "parishilton", igname = "parishilton")
-score2 <- getScore(twittername = "parishilton")
-score3 <- getScore(igname = "parishilton")
+# score <- getScore(twittername = "parishilton", igname = "parishilton")
+# score2 <- getScore(twittername = "parishilton")
+# score3 <- getScore(igname = "parishilton")
 
-library(plumber)
-r <- plumb("evaluation2.R")
-r$run(port=8000, host="0.0.0.0")
+# library(plumber)
+# r <- plumb("evaluation.R")
+# r$run(port=8000, host="0.0.0.0")
 
 ###################### WORK IN PROGRESS #######################
 
