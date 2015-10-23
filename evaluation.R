@@ -13,15 +13,15 @@ getScore <- function(twittername = NULL, igname = NULL) {
     library(stringr)
     library(RJSONIO)
     library(RCurl)
-    load("hashgrep.R")
+    source("hashgrep.R")
     
     if (!is.null(twittername) & is.null(igname)) {
         # twitter OAuth, token = my_oauth
         load("twitterOauthSurvey.Rdata")
         consumer_key <- my_oauth$consumerKey
         consumer_secret <- my_oauth$consumerSecret
-        access_token <- my_oauth$oauthKey
-        access_secret <- my_oauth$oauthSecret
+        access_token <- my_oauth$oauthKey[[1]]
+        access_secret <- my_oauth$oauthSecret[[1]]
         setup_twitter_oauth(consumer_key = consumer_key, consumer_secret = consumer_secret,
                             access_token = access_token, access_secret = access_secret)
         1
@@ -63,25 +63,25 @@ getScore <- function(twittername = NULL, igname = NULL) {
             data.frame(., stringsAsFactors=FALSE)
         names(clean_tweets) <- "text"
         
-        ################## Compute polarity ################
-        
         # determine polarity of tweets
         str_tweets <- str_split(clean_tweets$text, "\\s+")
-        pos.matches <- lapply(str_tweets, match, table = pos)
-        neg.matches <- lapply(str_tweets, match, table = neg)
-        pos.matches <- lapply(pos.matches, function(row) !is.na(row))
-        neg.matches <- lapply(neg.matches, function(row) !is.na(row))
-        scores.pos <- lapply(pos.matches, function(row) length(pos.matches[row == TRUE]))
-        scores.neg <- lapply(neg.matches, function(row) length(neg.matches[row == TRUE]))
-        ## if statement zur überprüfung von polarität (<0 ist negativ, >0 ist positiv, = 0 ist neutral)
+        scores_pos <- lapply(str_tweets, match, table = pos) %>%
+            lapply(., function(row) !is.na(row)) %>%
+            lapply(., function(row) sum(unlist(row)))
+        scores_neg <- lapply(str_tweets, match, table = neg) %>%
+            lapply(., function(row) !is.na(row)) %>%
+            lapply(., function(row) sum(unlist(row)))
         
-        # sum scores to total score
-        score <- sum(sapply(pos.matches, sum) - sapply(neg.matches, sum))
-        score
+        # sum scores and compute percentage of positive, negative and neutral posts
+        scores <- as.numeric(scores_pos)-as.numeric(scores_neg)
+        list(length(which(scores > 0))/length(scores), 
+             length(which(scores < 0))/length(scores), 
+             length(which(scores == 0))/length(scores))
         
     } else if (is.null(twittername) & !is.null(igname)) {
         # instagram OAuth
         load("ig_oauth_ia")
+        source("getUserMedia.R")
         token <- ig_oauth_ia$token
         
         # lists with positive and negative words
@@ -89,64 +89,7 @@ getScore <- function(twittername = NULL, igname = NULL) {
         neg <- scan("negwords.txt", what='character')
         
         # get user media
-        getUserMedia <- function(igname, token, n=100){
-            
-            # search for username and get user id
-            content <- fromJSON(getURL(paste('https://api.instagram.com/v1/users/search?q=', 
-                                             igname,'&access_token=', token, sep="")), 
-                                unexpected.escape = "keep")
-            userid <- as.numeric(content$data[[1]][[3]])
-            
-            # get user media 
-            content <- fromJSON(getURL(paste("https://api.instagram.com/v1/users/", 
-                                             userid, "/media/recent?access_token=", 
-                                             token, "&count=100", sep="")))
-            
-            # put text in data frame for the first 20 media
-            df <- data.frame(no = 1:length(content$data))
-            for(i in 1:length(content$data))
-            {
-                #text
-                df$text[i] <- content$data[[i]]$caption$text
-            }
-            
-            # iterate over the next 80 media to have 100  
-            l <- length(content$data)
-            next_url <- content$pagination[[1]]
-            while (l<n & length(content$data)>0 && (length(content$pagination)!=0) &&
-                       !is.null(content$pagination['next_url'])){
-                
-                content <- fromJSON(getURL(next_url))
-                l <- l + length(content$data)
-                
-                new.df <- data.frame(no = 1:length(content$data))
-                for(i in 1:length(content$data))
-                {
-                    #text
-                    new.df$text[i] <- content$data[[i]]$caption$text
-                }
-                
-                df <- rbind(df, new.df)
-            }
-            
-            return(data.frame(df$text))
-        }
-        
         user_media <- getUserMedia(igname, token = token)
-        
-        # function to split hashtags apart by uppercase letter
-        hashgrep <- function(text) {
-            hg <- function(text) {
-                result <- ""
-                while(text != result) {
-                    result <- text
-                    text <- gsub("#[[:alpha:]]+\\K([[:upper:]]+)", " \\1", 
-                                 text, perl = TRUE)
-                }
-                return(text)
-            }
-            unname(sapply(text, hg))
-        }
         
         # cleaning pipeline
         clean_ig <- data.frame(sapply(user_media$df.text, function(row) 
@@ -170,16 +113,19 @@ getScore <- function(twittername = NULL, igname = NULL) {
         
         # determine polarity
         str_ig <- str_split(clean_ig$text, "\\s+")
-        pos.matches <- lapply(str_ig, match, table = pos)
-        neg.matches <- lapply(str_ig, match, table = neg)
-        pos.matches <- lapply(pos.matches, function(row) !is.na(row))
-        neg.matches <- lapply(neg.matches, function(row) !is.na(row))
-        scores.pos <- lapply(pos.matches, function(row) length(pos.matches[row == TRUE]))
-        scores.neg <- lapply(neg.matches, function(row) length(neg.matches[row == TRUE]))
+        scores_pos <- lapply(str_ig, match, table = pos) %>%
+            lapply(., function(row) !is.na(row)) %>%
+            lapply(., function(row) sum(unlist(row)))
+        scores_neg <- lapply(str_ig, match, table = neg) %>%
+            lapply(., function(row) !is.na(row)) %>%
+            lapply(., function(row) sum(unlist(row)))
         
-        # sum scores to total score
-        score <- sum(sapply(pos.matches, sum) - sapply(neg.matches, sum))
-        score
+        # sum scores and compute percentage of positive, negative and neutral posts
+        scores <- as.numeric(scores_pos)-as.numeric(scores_neg)
+        ig_pos_perc <- length(which(scores > 0))/length(scores)
+        ig_neg_perc <- length(which(scores < 0))/length(scores)
+        ig_neu_perc <- length(which(scores == 0))/length(scores)
+        list(ig_pos_perc, ig_neg_perc, ig_neu_perc)
         
     } else if (!is.null(twittername) & !is.null(igname)) {
         
@@ -189,8 +135,8 @@ getScore <- function(twittername = NULL, igname = NULL) {
         load("twitterOauthSurvey.Rdata")
         consumer_key <- my_oauth$consumerKey
         consumer_secret <- my_oauth$consumerSecret
-        access_token <- my_oauth$oauthKey
-        access_secret <- my_oauth$oauthSecret
+        access_token <- my_oauth$oauthKey[[1]]
+        access_secret <- my_oauth$oauthSecret[[1]]
         setup_twitter_oauth(consumer_key = consumer_key, consumer_secret = consumer_secret,
                             access_token = access_token, access_secret = access_secret)
         1
@@ -227,88 +173,31 @@ getScore <- function(twittername = NULL, igname = NULL) {
             data.frame(., stringsAsFactors=FALSE)
         names(clean_tweets) <- "text"
         
-        
-        ################## Compute polarity ################
-        
         # determine polarity of tweets
         str_tweets <- str_split(clean_tweets$text, "\\s+")
-        pos.matches <- lapply(str_tweets, match, table = pos)
-        neg.matches <- lapply(str_tweets, match, table = neg)
-        pos.matches <- lapply(pos.matches, function(row) !is.na(row))
-        neg.matches <- lapply(neg.matches, function(row) !is.na(row))
-        scores.pos <- lapply(pos.matches, function(row) length(pos.matches[row == TRUE]))
-        scores.neg <- lapply(neg.matches, function(row) length(neg.matches[row == TRUE]))
-        ## if statement zur überprüfung von polarität (<0 ist negativ, >0 ist positiv, = 0 ist neutral)
+        scores_pos <- lapply(str_tweets, match, table = pos) %>%
+            lapply(., function(row) !is.na(row)) %>%
+            lapply(., function(row) sum(unlist(row)))
+        scores_neg <- lapply(str_tweets, match, table = neg) %>%
+            lapply(., function(row) !is.na(row)) %>%
+            lapply(., function(row) sum(unlist(row)))
         
-        # sum scores to total score
-        twitterscore <- sum(sapply(pos.matches, sum) - sapply(neg.matches, sum))
-        
+        # sum scores and compute percentage of positive, negative and neutral posts
+        tw_scores <- as.numeric(scores_pos)-as.numeric(scores_neg)
+        tw_pos_perc <- length(which(tw_scores > 0))/length(tw_scores)
+        tw_neg_perc <- length(which(tw_scores < 0))/length(tw_scores)
+        tw_neu_perc <- length(which(tw_scores == 0))/length(tw_scores)
+    
         
         ############################ INSTAGRAM #####################################
         
         # instagram OAuth
         load("ig_oauth_ia")
+        source("getUserMedia.R")
         token <- ig_oauth_ia$token
         
         # get user media
-        getUserMedia <- function(igname, token, n=100){
-            
-            # search for username and get user id
-            content <- fromJSON(getURL(paste('https://api.instagram.com/v1/users/search?q=', 
-                                             igname,'&access_token=', token, sep="")), 
-                                unexpected.escape = "keep")
-            userid <- as.numeric(content$data[[1]][[3]])
-            
-            # get user media 
-            content <- fromJSON(getURL(paste("https://api.instagram.com/v1/users/", 
-                                             userid, "/media/recent?access_token=", 
-                                             token, "&count=100", sep="")))
-            
-            # put text in data frame for the first 20 media
-            df <- data.frame(no = 1:length(content$data))
-            for(i in 1:length(content$data))
-            {
-                #text
-                df$text[i] <- content$data[[i]]$caption$text
-            }
-            
-            # iterate over the next 80 media to have 100  
-            l <- length(content$data)
-            next_url <- content$pagination[[1]]
-            while (l<n & length(content$data)>0 && (length(content$pagination)!=0) &&
-                       !is.null(content$pagination['next_url'])){
-                
-                content <- fromJSON(getURL(next_url))
-                l <- l + length(content$data)
-                
-                new.df <- data.frame(no = 1:length(content$data))
-                for(i in 1:length(content$data))
-                {
-                    #text
-                    new.df$text[i] <- content$data[[i]]$caption$text
-                }
-                
-                df <- rbind(df, new.df)
-            }
-            
-            return(data.frame(df$text))
-        }
-        
         user_media <- getUserMedia(igname, token = token)
-        
-        # function to split hashtags apart by uppercase letter
-        hashgrep <- function(text) {
-            hg <- function(text) {
-                result <- ""
-                while(text != result) {
-                    result <- text
-                    text <- gsub("#[[:alpha:]]+\\K([[:upper:]]+)", " \\1", 
-                                 text, perl = TRUE)
-                }
-                return(text)
-            }
-            unname(sapply(text, hg))
-        }
         
         # cleaning pipeline
         clean_ig <- data.frame(sapply(user_media$df.text, function(row) 
@@ -332,19 +221,22 @@ getScore <- function(twittername = NULL, igname = NULL) {
         
         # determine polarity
         str_ig <- str_split(clean_ig$text, "\\s+")
-        pos.matches <- lapply(str_ig, match, table = pos)
-        neg.matches <- lapply(str_ig, match, table = neg)
-        pos.matches <- lapply(pos.matches, function(row) !is.na(row))
-        neg.matches <- lapply(neg.matches, function(row) !is.na(row))
-        scores.pos <- lapply(pos.matches, function(row) length(pos.matches[row == TRUE]))
-        scores.neg <- lapply(neg.matches, function(row) length(neg.matches[row == TRUE]))
+        ig_scores_pos <- lapply(str_ig, match, table = pos) %>%
+            lapply(., function(row) !is.na(row)) %>%
+            lapply(., function(row) sum(unlist(row)))
+        ig_scores_neg <- lapply(str_ig, match, table = neg) %>%
+            lapply(., function(row) !is.na(row)) %>%
+            lapply(., function(row) sum(unlist(row)))
         
-        # sum scores to total score
-        igscore <- sum(sapply(pos.matches, sum) - sapply(neg.matches, sum))
+        # sum scores and compute percentage of positive, negative and neutral posts
+        ig_scores <- as.numeric(ig_scores_pos)-as.numeric(ig_scores_neg)
+        ig_pos_perc <- length(which(ig_scores > 0))/length(ig_scores)
+        ig_neg_perc <- length(which(ig_scores < 0))/length(ig_scores)
+        ig_neu_perc <- length(which(ig_scores == 0))/length(ig_scores)
         
-        # sum up twitter score & ig score
-        score <- (igscore + twitterscore) / 2
-        score
+        # sum up twitter & ig percentages and return them
+        list((tw_pos_perc+ig_pos_perc)/2, (tw_neg_perc+ig_neg_perc)/2, 
+             (tw_neu_perc+ig_neu_perc)/2)
         
     } else 
         print("Sorry, we can´t provide feedback as you didn´t indicate any social media profile")
@@ -358,7 +250,7 @@ getScore <- function(twittername = NULL, igname = NULL) {
 
 # library(plumber)
 # r <- plumb("evaluation.R")
-# r$run(port=8000, host="0.0.0.0")
+# r$run(port=1234, host="0.0.0.0")
 
 ###################### WORK IN PROGRESS #######################
 
