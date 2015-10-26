@@ -1,5 +1,5 @@
 getUserMedia <-
-function(igname, token, n=100){
+function(igname, token, n=80){
             
             # search for username and get user id
             content <- fromJSON(getURL(paste('https://api.instagram.com/v1/users/search?q=', 
@@ -12,7 +12,7 @@ function(igname, token, n=100){
                                              userid, "/media/recent?access_token=", 
                                              token, "&count=100", sep="")))
             
-            # put text in data frame for the first 20 media
+            # put text in data frame for the first 30 or so media
             df <- data.frame(no = 1:length(content$data))
             for(i in 1:length(content$data))
             {
@@ -39,5 +39,5 @@ function(igname, token, n=100){
                 df <- rbind(df, new.df)
             }
             
-            return(data.frame(df$text))
+            return(data.frame(text = df$text))
         }
