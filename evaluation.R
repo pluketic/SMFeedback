@@ -2,18 +2,24 @@
 options(httr_oauth_cache = TRUE)
 # setwd("~/Desktop/IA/Twitter/SMFeedback")
 
+# required packages
+library(twitteR)
+library(httr)
+library(dplyr)
+library(magrittr)
+library(stringr)
+library(RJSONIO)
+library(RCurl)
+source("hashgrep.R")
+source("cleanPosts.R")
+source("getUserMedia.R")
+
+# lists with positive and negative words
+pos <- scan("poswords.txt", what = "character")
+neg <- scan("negwords.txt", what = "character")
+
 #' @post /score
 getScore <- function(twittername = NULL, igname = NULL) {
-    
-    # required packages
-    library(twitteR)
-    library(httr)
-    library(dplyr)
-    library(magrittr)
-    library(stringr)
-    library(RJSONIO)
-    library(RCurl)
-    source("hashgrep.R")
     
     if (!is.null(twittername) & is.null(igname)) {
         # twitter OAuth, token = my_oauth
@@ -26,42 +32,14 @@ getScore <- function(twittername = NULL, igname = NULL) {
                             access_token = access_token, access_secret = access_secret)
         1
         
-        # lists with positive and negative words
-        # download lists with positive and negative words
-        #fileURL2 <- "https://raw.githubusercontent.com/mjhea0/twitter-sentiment-analysis/master/wordbanks/negative-words.txt"
-        #download.file(fileURL2, destfile = "negwords.txt", method = "curl")
-        #fileURL3 <- "https://raw.githubusercontent.com/mjhea0/twitter-sentiment-analysis/master/wordbanks/positive-words.txt"
-        #download.file(fileURL3, destfile = "poswords.txt", method = "curl")
-        pos <- scan("poswords.txt", what='character')
-        neg <- scan("negwords.txt", what='character')
-        
         # get most recent tweets
-        user_tweets <- userTimeline(twittername, n = 100, includeRts = TRUE)
+        user_tweets <- userTimeline(twittername, n = 100, includeRts = FALSE)
         # get the text\\
-        dirty_tweets <- twListToDF(user_tweets) 
-        dirty_tweets <- data.frame(unlist(lapply(user_tweets, function(t)t$getText())))
-        names(dirty_tweets) <- "text"
+        dirty_tweets <- twListToDF(user_tweets) %>%
+            data.frame(text = unlist(lapply(user_tweets, function(t)t$getText())))
         
-        # cleaning pipeline
-        clean_tweets <- data.frame(sapply(dirty_tweets$text, function(row) 
-            iconv(row, "latin1", "ASCII", sub="")))
-        names(clean_tweets) <- "text"
-        clean_tweets <- clean_tweets$text %>%
-            gsub("&amp;", "", .) %>% # remove &
-            gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", .) %>% # remove retweet entities
-            gsub("@\\w+", "", .) %>% # remove at people
-            #gsub("([[:upper:]][[:lower:]])", " \\1", .) %>% # split group of words at uppercase letter and add a white space
-            hashgrep %>%
-            gsub("[[:punct:]]", "", .) %>% # remove punctuation
-            gsub("[[:digit:]]", "", .) %>% # remove digits
-            gsub("http\\w+", "", .) %>% # remove html links
-            iconv(from = "latin1", to = "ASCII", sub="") %>% # remove emoji and bizarre signs
-            gsub("[ \t]{2,}", " ", .) %>% # remove unnecessary spaces
-            gsub("^\\s+|\\s+$", "", .) %>% # remove unnecessary spaces
-            subset(., . != "") %>% # remove empty lines
-            tolower %>%
-            data.frame(., stringsAsFactors=FALSE)
-        names(clean_tweets) <- "text"
+        # clean tweets
+        clean_tweets <- cleanPosts(dirty_tweets)
         
         # determine polarity of tweets
         str_tweets <- str_split(clean_tweets$text, "\\s+")
@@ -81,35 +59,13 @@ getScore <- function(twittername = NULL, igname = NULL) {
     } else if (is.null(twittername) & !is.null(igname)) {
         # instagram OAuth
         load("ig_oauth_ia")
-        source("getUserMedia.R")
         token <- ig_oauth_ia$token
-        
-        # lists with positive and negative words
-        pos <- scan("poswords.txt", what='character')
-        neg <- scan("negwords.txt", what='character')
         
         # get user media
         user_media <- getUserMedia(igname, token = token)
         
-        # cleaning pipeline
-        clean_ig <- data.frame(sapply(user_media$df.text, function(row) 
-            iconv(row, "latin1", "ASCII", sub="")))
-        names(clean_ig) <- "text"
-        clean_ig <- clean_ig$text %>%
-            gsub("&amp;", "", .) %>% # remove &
-            gsub("@\\w+", "", .) %>% # remove at people
-            #gsub("([[:upper:]][[:lower:]])", " \\1", .) %>% # split group of words at uppercase letter and add a white space
-            hashgrep %>%
-            gsub("[[:punct:]]", "", .) %>% # remove punctuation
-            gsub("[[:digit:]]", "", .) %>% # remove digits
-            gsub("http\\w+", "", .) %>% # remove html links
-            iconv(from = "latin1", to = "ASCII", sub="") %>% # remove emoji and bizarre signs
-            gsub("[ \t]{2,}", " ", .) %>% # remove unnecessary spaces
-            gsub("^\\s+|\\s+$", "", .) %>% # remove unnecessary spaces
-            subset(., . != "") %>% # remove empty lines
-            tolower %>%
-            data.frame(., stringsAsFactors=FALSE)
-        names(clean_ig) <- "text"
+        # clean media
+        clean_ig <- cleanPosts(user_media)
         
         # determine polarity
         str_ig <- str_split(clean_ig$text, "\\s+")
@@ -141,37 +97,14 @@ getScore <- function(twittername = NULL, igname = NULL) {
                             access_token = access_token, access_secret = access_secret)
         1
         
-        # lists with positive and negative words
-        pos <- scan("poswords.txt", what='character')
-        neg <- scan("negwords.txt", what='character')
-        
         # get most recent tweets
         user_tweets <- userTimeline(twittername, n = 100, includeRts = TRUE)
         # get the text
         dirty_tweets <- twListToDF(user_tweets) 
-        dirty_tweets <- data.frame(unlist(lapply(user_tweets, function(t)t$getText())))
-        names(dirty_tweets) <- "text"
+        dirty_tweets <- data.frame(text = unlist(lapply(user_tweets, function(t)t$getText())))
         
-        # cleaning pipeline
-        clean_tweets <- data.frame(sapply(dirty_tweets$text, function(row) 
-            iconv(row, "latin1", "ASCII", sub="")))
-        names(clean_tweets) <- "text"
-        clean_tweets <- clean_tweets$text %>%
-            gsub("&amp;", "", .) %>% # remove &
-            gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", .) %>% # remove retweet entities
-            gsub("@\\w+", "", .) %>% # remove at people
-            #gsub("([[:upper:]][[:lower:]])", " \\1", .) %>% # split group of words at uppercase letter and add a white space
-            hashgrep %>%
-            gsub("[[:punct:]]", "", .) %>% # remove punctuation
-            gsub("[[:digit:]]", "", .) %>% # remove digits
-            gsub("http\\w+", "", .) %>% # remove html links
-            iconv(from = "latin1", to = "ASCII", sub="") %>% # remove emoji and bizarre signs
-            gsub("[ \t]{2,}", " ", .) %>% # remove unnecessary spaces
-            gsub("^\\s+|\\s+$", "", .) %>% # remove unnecessary spaces
-            subset(., . != "") %>% # remove empty lines
-            tolower %>%
-            data.frame(., stringsAsFactors=FALSE)
-        names(clean_tweets) <- "text"
+        # clean tweets
+        clean_tweets <- cleanPosts(dirty_tweets)
         
         # determine polarity of tweets
         str_tweets <- str_split(clean_tweets$text, "\\s+")
@@ -193,31 +126,13 @@ getScore <- function(twittername = NULL, igname = NULL) {
         
         # instagram OAuth
         load("ig_oauth_ia")
-        source("getUserMedia.R")
         token <- ig_oauth_ia$token
         
         # get user media
         user_media <- getUserMedia(igname, token = token)
         
-        # cleaning pipeline
-        clean_ig <- data.frame(sapply(user_media$df.text, function(row) 
-            iconv(row, "latin1", "ASCII", sub="")))
-        names(clean_ig) <- "text"
-        clean_ig <- clean_ig$text %>%
-            gsub("&amp;", "", .) %>% # remove &
-            gsub("@\\w+", "", .) %>% # remove at people
-            #gsub("([[:upper:]][[:lower:]])", " \\1", .) %>% # split group of words at uppercase letter and add a white space
-            hashgrep %>%
-            gsub("[[:punct:]]", "", .) %>% # remove punctuation
-            gsub("[[:digit:]]", "", .) %>% # remove digits
-            gsub("http\\w+", "", .) %>% # remove html links
-            iconv(from = "latin1", to = "ASCII", sub="") %>% # remove emoji and bizarre signs
-            gsub("[ \t]{2,}", " ", .) %>% # remove unnecessary spaces
-            gsub("^\\s+|\\s+$", "", .) %>% # remove unnecessary spaces
-            subset(., . != "") %>% # remove empty lines
-            tolower %>%
-            data.frame(., stringsAsFactors=FALSE)
-        names(clean_ig) <- "text"
+        # clean media
+        clean_ig <- cleanPosts(user_media)
         
         # determine polarity
         str_ig <- str_split(clean_ig$text, "\\s+")
