@@ -43,7 +43,7 @@ getRatio <- function(twittername = NULL, igname = NULL) {
                                          userid, "/?access_token=", token, sep="")))
     
         # compute ratio
-        content$data$counts$followed_by / content$data$counts$follows
+        content$data$counts[[2]] / content$data$counts[[3]]
         
     } else if (!is.null(twittername) & !is.null(igname)) {
         
@@ -78,7 +78,7 @@ getRatio <- function(twittername = NULL, igname = NULL) {
         
         # sum up twitter & ig percentages and return them
         (user$getFollowersCount()/user$getFriendsCount()) + 
-            (content$data$counts$followed_by/content$data$counts$follows) / 2
+            (content$data$counts[[2]]/content$data$counts[[3]]) / 2
         
     } else 
         print("Sorry, we can´t provide feedback about your follower/friends ratio as you didn´t indicate any social media profile")
