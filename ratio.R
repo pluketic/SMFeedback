@@ -5,8 +5,6 @@ options(httr_oauth_cache = TRUE)
 # required packages
 library(twitteR)
 library(httr)
-library(dplyr)
-library(magrittr)
 library(stringr)
 library(RJSONIO)
 library(RCurl)
